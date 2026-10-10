@@ -77,9 +77,21 @@ async function startBot() {
                         buffer = Buffer.concat([buffer, chunk]);
                     }
 
+                    console.log('Convertendo para o formato correto de figurinha...');
+                    // Usa a biblioteca especializada para converter perfeitamente
+                    const { Sticker, StickerTypes } = require('wa-sticker-formatter');
+                    const sticker = new Sticker(buffer, {
+                        pack: 'Meu Bot', // Nome do pacote
+                        author: 'Figurinhas', // Autor
+                        type: StickerTypes.FULL, // Mantém o formato original da imagem sem cortar
+                        quality: 70, // Qualidade boa
+                    });
+
+                    const stickerBuffer = await sticker.toBuffer();
+
                     // Envia de volta como figurinha
                     await sock.sendMessage(from, {
-                        sticker: buffer,
+                        sticker: stickerBuffer,
                     });
 
                     console.log('Figurinha enviada com sucesso!');
