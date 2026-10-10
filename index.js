@@ -8,7 +8,7 @@ const client = new Client({
     authStrategy: new LocalAuth(),
     ffmpegPath: ffmpeg.path,
     puppeteer: {
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
     }
 });
 
