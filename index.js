@@ -47,6 +47,9 @@ async function startBot() {
         }
     });
 
+    // Variável para armazenar o "tempo de espera" (cooldown) de cada usuário
+    const userCooldowns = new Map();
+
     // Escuta as mensagens recebidas
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
@@ -56,6 +59,26 @@ async function startBot() {
             if (msg.key.fromMe) continue;
 
             const from = msg.key.remoteJid;
+
+            // 1. ESCUDO: Ignora grupos (evita spam e banimento)
+            if (from.endsWith('@g.us')) continue;
+
+            // 2. ESCUDO: Rate Limit (Cooldown)
+            // Impede que a pessoa mande 50 vídeos seguidos e trave a AWS
+            const now = Date.now();
+            const userLastMessageTime = userCooldowns.get(from) || 0;
+            const cooldownAmount = 10000; // 10 segundos de espera entre mensagens
+
+            if (now - userLastMessageTime < cooldownAmount) {
+                // Se a pessoa mandar muito rápido, avisa (apenas 1 vez para não floodar)
+                const timeLeft = ((cooldownAmount - (now - userLastMessageTime)) / 1000).toFixed(1);
+                console.log(`⏳ Usuário ${from} está em cooldown. Tentou mandar rápido demais.`);
+                continue; // Simplesmente ignora o processo para proteger a máquina
+            }
+
+            // Atualiza o tempo da pessoa
+            userCooldowns.set(from, now);
+
             const messageContent = msg.message;
 
             // Detecta se a mensagem tem imagem, vídeo ou GIF (sticker animado)
