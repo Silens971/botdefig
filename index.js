@@ -27,6 +27,19 @@ client.on('ready', () => {
     console.log('==================================================\n');
 });
 
+// Eventos de debug para vermos onde está travando
+client.on('authenticated', () => {
+    console.log('🔒 Autenticado com sucesso no WhatsApp!');
+});
+
+client.on('auth_failure', msg => {
+    console.error('❌ Falha na autenticação', msg);
+});
+
+client.on('loading_screen', (percent, message) => {
+    console.log(`⏳ Carregando o WhatsApp: ${percent}% - ${message}`);
+});
+
 // Escuta apenas mensagens recebidas (ignora as que o próprio bot envia)
 client.on('message', async msg => {
     // Verifica se a mensagem tem alguma mídia (foto, vídeo, gif)
