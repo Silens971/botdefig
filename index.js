@@ -6,7 +6,10 @@ const ffmpeg = require('@ffmpeg-installer/ffmpeg');
 // Inicializa o cliente guardando a sessão (assim não precisa ler o QR Code toda vez que reiniciar)
 const client = new Client({
     authStrategy: new LocalAuth(),
-    ffmpegPath: ffmpeg.path
+    ffmpegPath: ffmpeg.path,
+    puppeteer: {
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    }
 });
 
 // Gera o QR Code no terminal para você escanear com o celular do bot
