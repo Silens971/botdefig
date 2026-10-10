@@ -83,8 +83,8 @@ async function startBot() {
                     const sticker = new Sticker(buffer, {
                         pack: 'Meu Bot', // Nome do pacote
                         author: 'Figurinhas', // Autor
-                        type: StickerTypes.FULL, // Mantém o formato original da imagem sem cortar
-                        quality: 70, // Qualidade boa
+                        type: StickerTypes.CROPPED, // Corta quadrado para o vídeo ficar menor e leve
+                        quality: videoMsg ? 15 : 60, // Baixa bem a qualidade do vídeo para não passar de 1MB!
                     });
 
                     const stickerBuffer = await sticker.toBuffer();
