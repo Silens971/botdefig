@@ -12,7 +12,9 @@
   "type": "commonjs",
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
     "qrcode-terminal": "^0.12.0",
+    "sharp": "^0.35.5",
     "whatsapp-web.js": "github:pedroslopez/whatsapp-web.js#main"
   }
 }

@@ -1,76 +1,100 @@
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadContentFromMessage } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
+const { Boom } = require('@hapi/boom');
+const fs = require('fs');
+const path = require('path');
 
-const ffmpeg = require('@ffmpeg-installer/ffmpeg');
+async function startBot() {
+    // Guarda a sessão em disco para não precisar escanear o QR Code toda vez
+    const { state, saveCreds } = await useMultiFileAuthState('auth_session');
 
-// Inicializa o cliente guardando a sessão (assim não precisa ler o QR Code toda vez que reiniciar)
-const client = new Client({
-    authStrategy: new LocalAuth(),
-    ffmpegPath: ffmpeg.path,
-    webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
-    },
-    puppeteer: {
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
-    }
-});
+    const sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: false, // Vamos gerar o QR manualmente com qrcode-terminal
+    });
 
-// Gera o QR Code no terminal para você escanear com o celular do bot
-client.on('qr', (qr) => {
-    console.log('\n==================================================');
-    console.log('🤖 Use o WhatsApp do número do bot para escanear:');
-    console.log('==================================================\n');
-    qrcode.generate(qr, { small: true });
-});
+    // Salva as credenciais sempre que atualizar
+    sock.ev.on('creds.update', saveCreds);
 
-// Avisa quando conectou com sucesso
-client.on('ready', () => {
-    console.log('\n==================================================');
-    console.log('✅ Bot conectado e pronto para criar figurinhas!');
-    console.log('==================================================\n');
-});
+    // Gerencia a conexão
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect, qr } = update;
 
-// Eventos de debug para vermos onde está travando
-client.on('authenticated', () => {
-    console.log('🔒 Autenticado com sucesso no WhatsApp!');
-});
+        // Quando o QR Code estiver disponível, mostra no terminal
+        if (qr) {
+            console.log('\n==================================================');
+            console.log('🤖 Use o WhatsApp do número do bot para escanear:');
+            console.log('==================================================\n');
+            qrcode.generate(qr, { small: true });
+        }
 
-client.on('auth_failure', msg => {
-    console.error('❌ Falha na autenticação', msg);
-});
+        if (connection === 'close') {
+            const shouldReconnect = (lastDisconnect.error instanceof Boom)
+                ? lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut
+                : true;
 
-client.on('loading_screen', (percent, message) => {
-    console.log(`⏳ Carregando o WhatsApp: ${percent}% - ${message}`);
-});
+            console.log('🔴 Conexão encerrada. Reconectando...', shouldReconnect);
 
-// Escuta apenas mensagens recebidas (ignora as que o próprio bot envia)
-client.on('message', async msg => {
-    // Verifica se a mensagem tem alguma mídia (foto, vídeo, gif)
-    if (msg.hasMedia) {
-        try {
-            console.log(`Recebi uma mídia de ${msg.from}. Baixando...`);
-            // Baixa a foto ou vídeo
-            const media = await msg.downloadMedia();
-            
-            if (media) {
-                console.log('Mídia baixada! Convertendo e enviando como figurinha...');
-                // Envia de volta no mesmo chat como figurinha
-                await client.sendMessage(msg.from, media, { 
-                    sendMediaAsSticker: true,
-                    stickerName: 'Figurinha', // Nome que aparece na figurinha
-                    stickerAuthor: 'Meu Bot'         // Autor da figurinha
+            if (shouldReconnect) {
+                startBot(); // Tenta reconectar automaticamente
+            } else {
+                console.log('❌ Sessão encerrada. Apague a pasta auth_session e reinicie.');
+            }
+        } else if (connection === 'open') {
+            console.log('\n==================================================');
+            console.log('✅ Bot conectado e pronto para criar figurinhas!');
+            console.log('==================================================\n');
+        }
+    });
+
+    // Escuta as mensagens recebidas
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type !== 'notify') return;
+
+        for (const msg of messages) {
+            // Ignora mensagens enviadas pelo próprio bot
+            if (msg.key.fromMe) continue;
+
+            const from = msg.key.remoteJid;
+            const messageContent = msg.message;
+
+            // Detecta se a mensagem tem imagem, vídeo ou GIF (sticker animado)
+            const imageMsg = messageContent?.imageMessage;
+            const videoMsg = messageContent?.videoMessage;
+            const stickerMsg = messageContent?.stickerMessage;
+
+            if (imageMsg || videoMsg) {
+                try {
+                    console.log(`Recebi uma mídia de ${from}. Processando...`);
+
+                    const mediaType = imageMsg ? 'image' : 'video';
+                    const mediaMsg = imageMsg || videoMsg;
+
+                    // Baixa a mídia
+                    const stream = await downloadContentFromMessage(mediaMsg, mediaType);
+                    let buffer = Buffer.from([]);
+                    for await (const chunk of stream) {
+                        buffer = Buffer.concat([buffer, chunk]);
+                    }
+
+                    // Envia de volta como figurinha
+                    await sock.sendMessage(from, {
+                        sticker: buffer,
+                    });
+
+                    console.log('Figurinha enviada com sucesso!');
+                } catch (err) {
+                    console.error('Erro ao criar figurinha:', err);
+                    await sock.sendMessage(from, { text: 'Ops! Deu um erro ao tentar criar a figurinha. 😅' });
+                }
+            } else {
+                // Se for texto, responde com as instruções
+                await sock.sendMessage(from, {
+                    text: '🤖 *Olá! Eu sou um bot criador de figurinhas.*\n\n*Como usar:* É só me enviar qualquer imagem ou vídeo curto e eu devolvo como figurinha na mesma hora, sem precisar de comandos!'
                 });
             }
-        } catch (error) {
-            console.error('Erro ao fazer a figurinha:', error);
-            msg.reply('Ops! Deu um erro ao tentar criar a figurinha. Certifique-se de que o FFMPEG está instalado no seu computador.');
         }
-    } else {
-        // Se a pessoa só mandou texto, responde com as instruções curtas
-        msg.reply('🤖 *Olá! Eu sou um bot criador de figurinhas.*\n\n*Como usar:* É só me enviar qualquer imagem, vídeo curto ou GIF e eu devolvo como figurinha na mesma hora, sem precisar de comandos!');
-    }
-});
+    });
+}
 
-// Dá a partida no bot
-client.initialize();
+startBot();
